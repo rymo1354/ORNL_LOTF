@@ -1,0 +1,54 @@
+# ORNL_LOTF pipeline configuration (values from BUILD_OUT.md; refine as open items are decided)
+stages_root: ../stages            # relative to the repo root -> /pscratch/sd/r/rym/LOTF/stages
+papermill_kernel: python3         # kernel name inside the container
+
+materials:                        # BUILD_OUT §6; confirmed in Stage 0
+  Al2O3:  {mp_ids: [mp-1143], role: substrate}
+  BaTiO3: {mp_ids: [mp-2998, mp-5986, mp-5020], role: substrate}   # cubic, tetragonal, rhombohedral
+  CrTe2:  {mp_ids: [mp-685055], role: film, query_all_entries: true, expected_a: 3.81}
+
+substrates:                       # facets in pseudo-cubic / rhombohedral setting; verified in Stage 0/2
+  - {material: Al2O3,  facet: [1, 1, 1], note: "rhombohedral (111) == hexagonal (0001)"}
+  - {material: BaTiO3, facet: [1, 0, 0]}
+  - {material: BaTiO3, facet: [1, 1, 1]}
+
+dft:
+  hubbard_u: {Cr: 3.7}            # applied to every structure, independent of O/F presence
+  initial_magmom: {Cr: 3.0}       # ferromagnetic init; others default to 0.0
+  ivdw: 12                        # D3(BJ)
+  dipole_correction: auto         # LDIPOL/IDIPOL=3 on asymmetric slabs & heterostructures
+
+slabs:
+  min_slab_size: 12.0             # Å, fixed substrate thickness (tune in Stage 2)
+  n_frozen_bottom_layers: 2
+
+matching:                         # BUILD_OUT §8.2 starting values
+  target_atoms: [150, 300]
+  max_length_tol: 0.04
+  max_angle_tol: 0.0175           # rad, ~1 deg
+  max_area_ratio_tol: 0.08
+  n_twist_angles: 3
+  film_layers: [1, 2]             # monolayer, bulk-stacked (AA, 1T) bilayer
+
+interface:
+  start_gap: 3.25                 # Å, nearest substrate plane to Te plane
+  scan_gaps: [2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
+  reference_gap: 9.0
+  vacuum: 15.0
+
+strain:
+  mode: whole_cell                # whole_cell | film_only (open item §9)
+  biaxial: [-0.02, -0.01, 0.0, 0.01, 0.02]
+
+defects:                          # discrete counts per supercell; concentrations TBD with collaborators
+  - {species: Cr, kind: vacancy, counts: [1], region: film,      seed: 0}
+  - {species: Te, kind: vacancy, counts: [1], region: interface, seed: 0}
+  - {species: O,  kind: vacancy, counts: [1], region: interface, seed: 0}
+
+resources:                        # Perlmutter GPU layout, from EFF VASP_MACE_ASE example
+  cores_per_task: 16
+  gpus_per_task: 1
+  ranks_per_node: 4
+  atoms_per_node: 100
+  max_nodes_per_job: 4
+  max_attempts: 3                 # escalation ladder depth for unconverged runs

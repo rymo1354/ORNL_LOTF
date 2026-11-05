@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ornl_lotf"
+version = "0.0.1"
+description = "CrTe2 / oxide heterostructure construction and DFT pipeline on MatEnsemble"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pyyaml",
+    "pymatgen",
+    "pymatgen-analysis-defects",
+    "mp-api",
+    "ase",
+    "matplotlib",
+    "py3Dmol",
+    "papermill",
+    "ipykernel",
+    # HeteroBuilder: pinned to the rank-drift fix; move to develop once merged.
+    "vdW_structures @ git+https://github.com/Q-CAD/HeteroBuilder.git@9c7293cc70f87dfc43f65bcace425d565a960cbe",
+    # Ensemble-FF-Fit: fixed (non-editable) dependency, tracking frontier-rmg-update (was ac5702c at setup).
+    "EnsembleFFFit @ git+https://github.com/Q-CAD/Ensemble-FF-Fit.git@frontier-rmg-update",
+    # matensemble is installed in the container from a pinned clone (needs Flux bindings).
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["ornl_lotf*"]

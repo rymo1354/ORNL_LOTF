@@ -1,0 +1,48 @@
+# Generated data never goes in git
+stages/
+runs/
+matensemble_workflow-*/
+*.executed.ipynb
+
+# VASP inputs/outputs
+POSCAR*
+CONTCAR*
+OUTCAR*
+OSZICAR
+INCAR
+KPOINTS
+POTCAR
+WAVECAR
+CHGCAR
+CHG
+EIGENVAL
+DOSCAR
+PROCAR
+IBZKPT
+PCDAT
+XDATCAR
+REPORT
+vasprun.xml
+vaspout.h5
+relaxed.vasp
+properties.json
+*.vasp
+
+# Large / binary
+*.h5
+*.tar
+*.tar.gz
+*.traj
+
+# Secrets
+.env
+*api_key*
+
+# Python / Jupyter
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
