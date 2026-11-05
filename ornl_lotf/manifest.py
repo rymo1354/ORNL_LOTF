@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 MANIFEST_NAME = "manifest.jsonl"
-STATUSES = ("pending", "running", "done", "unconverged", "failed", "skipped")
+STATUSES = ("pending", "running", "done", "unconverged", "failed", "interrupted", "skipped")
 
 
 @dataclass

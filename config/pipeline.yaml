@@ -7,9 +7,11 @@ materials:                        # BUILD_OUT §6; confirmed in Stage 0
   BaTiO3: {mp_ids: [mp-2998, mp-5986, mp-5020], role: substrate}   # cubic, tetragonal, rhombohedral
   CrTe2:  {mp_ids: [mp-685055], role: film, query_all_entries: true, expected_a: 3.81}
 
-substrates:                       # facets in pseudo-cubic / rhombohedral setting; verified in Stage 0/2
-  - {material: Al2O3,  facet: [1, 1, 1], note: "rhombohedral (111) == hexagonal (0001)"}
-  - {material: BaTiO3, facet: [1, 0, 0]}
+substrates:                       # facets in the pseudo-cubic (BaTiO3) / rhombohedral (Al2O3) setting
+  # rhombohedral (111) == hexagonal (0001), confirmed in Stage 0; cut on the conventional hex cell
+  - {material: Al2O3,  facet: [1, 1, 1], setting: hexagonal, hkl_used: [0, 0, 1]}
+  # tetragonal P4mm: (100) has P in-plane, (001) P out-of-plane -> build both
+  - {material: BaTiO3, facet: [1, 0, 0], extra_facets: {tetragonal: [[0, 0, 1]]}}
   - {material: BaTiO3, facet: [1, 1, 1]}
 
 dft:
@@ -19,8 +21,11 @@ dft:
   dipole_correction: auto         # LDIPOL/IDIPOL=3 on asymmetric slabs & heterostructures
 
 slabs:
-  min_slab_size: 12.0             # Å, fixed substrate thickness (tune in Stage 2)
-  n_frozen_bottom_layers: 2
+  min_slab_size: 12.0             # Å between outermost plane centres; fixed across heterostructures
+  vacuum: 15.0                    # Å total, for the Stage 3 slab relaxation
+  plane_tol: 0.3                  # Å z-gap separating atomic planes (corundum Al-Al pairs are 0.49 Å apart)
+  symprec: 0.05                   # z -> -z symmetry test that decides the dipole correction
+  frozen: bottom_half             # selective dynamics for Stage 3
 
 matching:                         # BUILD_OUT §8.2 starting values
   target_atoms: [150, 300]

@@ -133,12 +133,15 @@ def disk_status(wd: Path) -> str:
         st = json.loads((wd / STATUS_FILE).read_text())
         return "unconverged" if "error" not in st else "failed"
     if (wd / "vasprun.xml").exists() or (wd / "OUTCAR").exists():
-        return "failed"
+        return "interrupted"        # e.g. walltime: outputs but the driver never wrote status.json
     return "pending"
 
 
-def archive_and_escalate(wd: Path, attempt: int, escalation: list[dict]) -> dict:
-    """Move a failed attempt's outputs aside (keeps CONTCAR/WAVECAR to restart) and escalate."""
+def archive_and_escalate(wd: Path, attempt: int, escalation: list[dict], escalate: bool = True) -> dict:
+    """Move a failed attempt's outputs aside (keeps CONTCAR/WAVECAR to restart) and escalate.
+
+    With ``escalate=False`` (interrupted runs) the current INCAR overrides are kept.
+    """
     dest = wd / "attempts" / str(attempt)
     dest.mkdir(parents=True, exist_ok=True)
     for name in ARCHIVE_FILES:
@@ -147,7 +150,8 @@ def archive_and_escalate(wd: Path, attempt: int, escalation: list[dict]) -> dict
     if (wd / "CONTCAR").exists():
         shutil.copy(wd / "CONTCAR", dest / "CONTCAR")
     task = json.loads((wd / TASK_FILE).read_text())
-    task["incar_overrides"] = dict(escalation[min(attempt, len(escalation) - 1)])
+    if escalate:
+        task["incar_overrides"] = dict(escalation[min(attempt, len(escalation) - 1)])
     (wd / TASK_FILE).write_text(json.dumps(task, indent=2))
     return task
 
@@ -213,8 +217,8 @@ def run_compute_stage(stage: str, recipe: Path, config: dict, stage_dir: Path) -
             if r.attempts >= max_attempts:
                 continue
             wd = Path(r.path)
-            if r.status in ("unconverged", "failed"):
-                archive_and_escalate(wd, r.attempts, escalation)
+            if r.status in ("unconverged", "failed", "interrupted"):
+                archive_and_escalate(wd, r.attempts, escalation, escalate=r.status != "interrupted")
             task = json.loads((wd / TASK_FILE).read_text())
             task["attempt"] = r.attempts + 1
             (wd / TASK_FILE).write_text(json.dumps(task, indent=2))
