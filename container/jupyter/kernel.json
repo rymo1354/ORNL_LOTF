@@ -1,0 +1,16 @@
+{
+ "argv": [
+  "{resource_dir}/kernel-helper.sh",
+  "/opt/basic/bin/python",
+  "-m",
+  "ipykernel_launcher",
+  "-f",
+  "{connection_file}"
+ ],
+ "display_name": "ORNL_LOTF (container)",
+ "language": "python",
+ "metadata": {
+  "debugger": true
+ },
+ "kernel_protocol_version": "5.5"
+}
