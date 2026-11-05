@@ -1,0 +1,29 @@
+# Stage 6: single points on heterostructure variants (run only after collaborator review).
+vasp_executable: "/global/common/software/nersc9/vasp/vasp/6.4.2-gpu/bin13/vasp_std"
+command: "/host_lib/ld-linux-x86-64.so.2 /global/common/software/nersc9/vasp/vasp/6.4.2-gpu/bin13/vasp_std"
+structure_filename: POSCAR
+pseudopotentials_directory: "/pscratch/sd/r/rym/MatEnsemble/run_pipeline/DFT/pymatgen_pseudos"
+potcar_functional: PBE_54_W_HASH
+input_set: MPRelaxSet
+nodes: 0
+atoms_per_node: 100
+
+user_incar_settings:
+  PREC: Accurate
+  ENCUT: 520
+  ALGO: Normal
+  EDIFF: 1.0e-05
+  NELM: 200
+  ISMEAR: 0
+  SIGMA: 0.05
+  IBRION: -1
+  NSW: 0
+  IVDW: 12
+  LASPH: true
+  LREAL: Auto
+  KPAR: 2
+  LWAVE: true
+  LCHARG: false
+
+user_kpoints_settings:
+  grid_density: 1000

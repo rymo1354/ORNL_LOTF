@@ -69,6 +69,24 @@ The Flux check confirms that the brokers on separate nodes merge into a single F
 
 Both launchers run `container/flux_run.sh` inside the container. That script writes a static Flux `R.json` and calls `run_pipeline.py` from inside `flux start`.
 
+## Compute stages
+
+Compute stages 1, 3 and 6 run through `ornl_lotf/compute.py`.
+
+1. Each record from the parent stage is copied into the run tree as `stages/NN/runs/<id>/POSCAR`, together with a `task.json` that holds its per-structure flags and attempt number.
+2. Ensemble-FF-Fit's `DFTMatEnsemble` finds the runs and submits them through a MatEnsemble `Pipeline`. The driver is `ornl_lotf/vasp_driver.py`.
+3. A run is finished when it has written `properties.json`. Relaxations also write `relaxed.vasp`.
+4. Unconverged runs are retried in the same allocation using the ladder in `resources.escalation`. The previous attempt's outputs are moved to `runs/<id>/attempts/<n>/`.
+
+The driver applies the following settings to every structure, whatever the input set would do:
+
+- Hubbard U on Cr, with LMAXMIX 4.
+- FM MAGMOM.
+- D3 dispersion.
+- A dipole correction and kz = 1 for asymmetric slabs.
+
+For cell relaxations, the residual stress must also be below `stress_tol_kbar`. A force-only EDIFFG would otherwise stop high-symmetry cells after one step.
+
 ## Secrets
 
 The Materials Project key is read from the `MP_API_KEY` environment variable and is never stored in this repository.

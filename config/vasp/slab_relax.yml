@@ -1,0 +1,33 @@
+# Stage 3: fixed-cell ionic relaxation of substrate slabs; bottom layers frozen via
+# selective dynamics written into POSCAR by Stage 2. kz = 1 and the dipole correction
+# (asymmetric slabs) are applied per structure by ornl_lotf.vasp_driver.
+vasp_executable: "/global/common/software/nersc9/vasp/vasp/6.4.2-gpu/bin13/vasp_std"
+command: "/host_lib/ld-linux-x86-64.so.2 /global/common/software/nersc9/vasp/vasp/6.4.2-gpu/bin13/vasp_std"
+structure_filename: POSCAR
+pseudopotentials_directory: "/pscratch/sd/r/rym/MatEnsemble/run_pipeline/DFT/pymatgen_pseudos"
+potcar_functional: PBE_54_W_HASH
+input_set: MPRelaxSet
+nodes: 0
+atoms_per_node: 100
+
+user_incar_settings:
+  PREC: Accurate
+  ENCUT: 520
+  ALGO: Normal
+  EDIFF: 1.0e-05
+  EDIFFG: -0.02
+  NELM: 200
+  ISMEAR: 0
+  SIGMA: 0.05
+  IBRION: 2
+  ISIF: 2                       # fixed cell
+  NSW: 150
+  IVDW: 12
+  LASPH: true
+  LREAL: Auto
+  KPAR: 2
+  LWAVE: true                   # restart source for the escalation ladder
+  LCHARG: false
+
+user_kpoints_settings:
+  grid_density: 1000

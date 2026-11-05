@@ -46,9 +46,13 @@ defects:                          # discrete counts per supercell; concentration
   - {species: O,  kind: vacancy, counts: [1], region: interface, seed: 0}
 
 resources:                        # Perlmutter GPU layout, from EFF VASP_MACE_ASE example
-  cores_per_task: 16
+  cores_per_task: 15              # 4 x 15 + broker fits one 64-core node; 16 only if a node is spare
   gpus_per_task: 1
   ranks_per_node: 4
   atoms_per_node: 100
   max_nodes_per_job: 4
   max_attempts: 3                 # escalation ladder depth for unconverged runs
+  escalation:                     # INCAR overrides; entry k-1 applies on attempt k (restarts from CONTCAR)
+    - {}
+    - {ALGO: All, NELM: 200}
+    - {ALGO: All, NELM: 300, AMIX: 0.1, BMIX: 0.01, AMIX_MAG: 0.4, BMIX_MAG: 0.01}
