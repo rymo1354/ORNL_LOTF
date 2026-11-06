@@ -94,3 +94,94 @@ def test_escalation_override_reaches_incar(tmp_path):
     assert not list((wd / "attempts").rglob("POSCAR"))      # EFF discovery must not see archives
     inc = write_inputs(wd, RECIPE, task)
     assert inc["ALGO"] == "All" and inc["NELM"] == 200
+
+
+# ---------------------------------------------------------------- crash / restart handling
+def _slab(c=30.0, z=(10.0, 12.0, 14.0)):
+    return Structure(Lattice.tetragonal(4.0, c), ["Ti", "O", "Ti"], [[0, 0, zi / c] for zi in z])
+
+
+def test_vasp_error_banner_is_failed_not_interrupted(tmp_path):
+    (tmp_path / "INCAR").write_text("x")
+    (tmp_path / "OUTCAR").write_text("x")
+    (tmp_path / "vasp.out").write_text("running\n")
+    assert disk_status(tmp_path) == "interrupted"
+    (tmp_path / "vasp.out").write_text("Error EDDDAV: Call to ZHEGV failed\nI REFUSE TO CONTINUE WITH THIS SICK JOB\n")
+    assert disk_status(tmp_path) == "failed"
+
+
+def test_matensemble_failure_record_marks_run_failed(tmp_path):
+    import os, time
+    from ornl_lotf.compute import crashed_runs
+
+    wd = tmp_path / "runs" / "slab-X-sym"
+    wd.mkdir(parents=True)
+    (wd / "INCAR").write_text("x")
+    (wd / "OUTCAR").write_text("x")               # no banner: abort came from another rank
+    wf = tmp_path / "matensemble_workflow-1" / "out" / "chore-run_vasp-0001"
+    wf.mkdir(parents=True)
+    (wf / "chore.pickle").write_bytes(b"\x80\x04junk" + str(wd.resolve()).encode() + b"\x94more")
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() + 5))
+    (tmp_path / "matensemble_workflow-1" / "status.json").write_text(
+        json.dumps({"failures": [{"chore_id": "chore-run_vasp-0001", "timestamp": stamp}]}))
+    crashed = crashed_runs(tmp_path)
+    assert str(wd.resolve()) in crashed
+    assert disk_status(wd, crashed[str(wd.resolve())]) == "failed"
+    # a failure older than the current attempt's INCAR belongs to an earlier attempt
+    os.utime(wd / "INCAR", (time.time() + 60, time.time() + 60))
+    assert disk_status(wd, crashed[str(wd.resolve())]) == "interrupted"
+
+
+def test_exploded_contcar_is_discarded(tmp_path):
+    from ornl_lotf.compute import geometry_broken
+
+    parent = tmp_path / "parent.vasp"
+    _slab().to(filename=str(parent), fmt="poscar")
+    assert geometry_broken(_slab(), _slab()) is None
+    assert "thicker" in geometry_broken(_slab(z=(10.0, 12.0, 24.0)), _slab())
+    assert "apart" in geometry_broken(_slab(z=(10.0, 10.3, 14.0)), _slab())
+
+    wd = tmp_path / "run"
+    wd.mkdir()
+    (wd / "task.json").write_text(json.dumps({"attempt": 1, "incar_overrides": {}}))
+    _slab(z=(10.0, 12.0, 24.0)).to(filename=str(wd / "CONTCAR"), fmt="poscar")
+    _slab(z=(10.0, 12.0, 24.0)).to(filename=str(wd / "POSCAR"), fmt="poscar")
+    (wd / "WAVECAR").write_bytes(b"w")
+    archive_and_escalate(wd, 1, [{}], escalate=False, reference=parent)
+    assert not (wd / "CONTCAR").exists() and not (wd / "WAVECAR").exists()
+    assert (wd / "attempts" / "1" / "CONTCAR.broken").exists()
+    assert Structure.from_file(wd / "POSCAR").cart_coords[:, 2].max() == pytest.approx(14.0)
+
+
+def test_empty_wavecar_removed(tmp_path):
+    (tmp_path / "task.json").write_text(json.dumps({"attempt": 1, "incar_overrides": {}}))
+    (tmp_path / "WAVECAR").write_bytes(b"")
+    archive_and_escalate(tmp_path, 1, [{}, {"ALGO": "All"}])
+    assert not (tmp_path / "WAVECAR").exists()
+
+
+def test_incar_rules_match_and_merge():
+    from ornl_lotf.compute import incar_rules_for
+    from ornl_lotf.manifest import Record
+
+    rules = [{"match": {"stage": "03_*", "asymmetric": True}, "incar": {"BMIX": 0.0001, "NELM": 300}},
+             {"match": {"id": "slab-BaTiO3-tetragonal-*"}, "incar": {"ISPIN": 1, "NELM": 400}}]
+    tet = Record(id="slab-BaTiO3-tetragonal-001-X", stage="03_slab_relax")
+    cub = Record(id="slab-BaTiO3-cubic-001-X", stage="03_slab_relax")
+    assert incar_rules_for(tet, "03_slab_relax", {"asymmetric": True}, rules) == {"BMIX": 0.0001, "NELM": 400, "ISPIN": 1}
+    assert incar_rules_for(cub, "03_slab_relax", {"asymmetric": False}, rules) == {}
+    assert incar_rules_for(cub, "06_single_points", {"asymmetric": True}, rules) == {}
+
+
+@needs_potcars
+def test_incar_base_then_overrides(tmp_path):
+    from ornl_lotf.vasp_driver import write_inputs
+
+    wd = tmp_path / "run"
+    wd.mkdir()
+    crte2_on_oxide_slab().to(filename=str(wd / "POSCAR"), fmt="poscar")
+    task = {"is_slab": True, "asymmetric": True, "incar_base": {"ISPIN": 1, "NELM": 300, "BMIX": 0.0001},
+            "incar_overrides": {"NELM": 400}}
+    inc = write_inputs(wd, RECIPE, task)
+    assert inc["ISPIN"] == 1 and "MAGMOM" not in inc
+    assert inc["NELM"] == 400 and inc["BMIX"] == 0.0001 and inc["LDIPOL"] is True

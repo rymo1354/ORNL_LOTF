@@ -62,12 +62,27 @@ podman-hpc run --rm -v $SCRATCH:$SCRATCH -e PYTHONPATH=$PWD -w $PWD localhost/or
 | Stage type | Command |
 |---|---|
 | Construction (CPU) | `STAGE=00_bulk sbatch container/launch_cpu.slurm` (account `m2113`) |
-| Compute (GPU) | `STAGE=01_bulk_relax sbatch container/launch_gpu.slurm` (account `m2113_g`) |
+| Compute (GPU) | `STAGE=01_bulk_relax sbatch container/launch_gpu.slurm` (account `m5014_g`) |
 | Flux check (GPU) | `STAGE=flux_smoke sbatch -N 2 container/launch_gpu.slurm` |
 
 The Flux check confirms that the brokers on separate nodes merge into a single Flux instance.
 
 Both launchers run `container/flux_run.sh` inside the container. That script writes a static Flux `R.json` and calls `run_pipeline.py` from inside `flux start`.
+
+## Stage 4: heterostructures
+
+`STAGE=04_heterostructures sbatch container/launch_cpu.slurm` runs `notebooks/04_heterostructures.ipynb`, which calls
+`ornl_lotf/hetero.py`. The settings are in `config/pipeline.yaml` under `matching`, `heterostructures` and `interface`.
+
+- The slabs to use are listed in `heterostructures.substrates`, optionally with `trim_to` (Å) and per-slab `matching` overrides (for example a looser `max_length_tol`). Trimming removes bulk-like bottom planes and keeps the slab
+  stoichiometric and its bottom termination unchanged; it is used for Al2O3. Every other Stage 3 slab is written to the manifest as `skipped`, with a reason.
+- CrTe2 (a monolayer, or with `film_layers: [1, 2]` also the AA bilayer) is matched onto each slab with HeteroBuilder and ZSL. The film takes all the strain.
+  - Strain is the film's principal in-plane strain.
+  - The twist is folded by lattice symmetry (film 60°; substrate 90°, 60° or 180°) and by mirrors.
+- The `n_twist_angles` lowest-strain distinct twists within `max_length_tol` and `max_atoms` are kept; the first is `primary`. Every candidate goes to `matches.csv`.
+- Each kept match is written at `interface.start_gap`, at every `scan_gaps` value, and at `reference_gap`, with `interface.vacuum` split equally below and above the atoms (the structure is centred in c).
+
+Twist, termination and facet choices are proof-of-concept placeholders to be reviewed with the experimentalists.
 
 ## Compute stages
 

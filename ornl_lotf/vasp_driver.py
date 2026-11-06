@@ -7,7 +7,9 @@ including its confirmed stress sign); additions:
 
 * Per-structure settings come from ``task.json`` in the working directory
   (written by ornl_lotf.compute from the manifest): slab flag, dipole flag,
-  attempt number, and escalation INCAR overrides.
+  attempt number, ``incar_base`` (matching ``dft.incar_rules`` from the config)
+  and ``incar_overrides`` (the escalation rung). Precedence: recipe < U/MAGMOM/
+  dipole blocks < incar_base < incar_overrides.
 * Hubbard U, FM MAGMOM, and the dipole correction are applied explicitly after
   pymatgen builds the INCAR (ornl_lotf.magnetism), independent of MPRelaxSet's
   oxide/fluoride rule.
@@ -29,6 +31,7 @@ import time
 from copy import deepcopy
 from pathlib import Path
 
+import numpy as np
 import yaml
 import pymatgen.io.vasp.sets as vasp_input_sets
 from pymatgen.core import SETTINGS, Structure
@@ -106,11 +109,21 @@ def write_inputs(wd: str | os.PathLike, recipe: dict, task: dict | None = None) 
     if "band_multiplier" in recipe and "NBANDS" not in user_incar:
         nelect, nions = iset.nelect, len(ordered)
         incar["NBANDS"] = int(max(nelect / 2 + nions / 2, nelect * recipe["band_multiplier"]))
-    # escalation overrides win over everything (including the explicit blocks above)
+    # per-structure rules (config dft.incar_rules, resolved into task.json by compute.py),
+    # then escalation overrides, which win over everything (including the blocks above)
+    incar.update(task.get("incar_base", {}))
     incar.update(task.get("incar_overrides", {}))
+    if int(incar.get("ISPIN", 2)) == 1:
+        incar.pop("MAGMOM", None)
 
     kppa = int(recipe.get("user_kpoints_settings", {}).get("grid_density", 1000))
     kpoints = kpoints_for(ordered, kppa, is_slab=bool(task.get("is_slab")))
+    # KPAR cannot exceed the number of k-points (large heterostructure cells are often Gamma-only).
+    # Upper bound on the irreducible count: time reversal pairs k with -k on a Gamma-centred grid.
+    grid = [int(g) for g in kpoints.kpts[0]]
+    n_irr = (int(np.prod(grid)) + int(np.prod([2 if g % 2 == 0 else 1 for g in grid]))) // 2
+    if int(incar.get("KPAR", 1)) > max(1, n_irr):
+        incar["KPAR"] = max(1, n_irr)
 
     incar.write_file(wd / "INCAR")
     kpoints.write_file(wd / "KPOINTS")
@@ -190,6 +203,9 @@ def run_vasp_calculation(working_directory_list, vasp_yaml_list):
         wd = Path(working_directory)
         recipe = yaml.safe_load(Path(vasp_yaml).read_text())
         task = load_task(wd)
+        if task.get("skip"):            # dropped from the stage (task.json "skip": "<reason>"); every rank exits
+            print(f"{wd}: skipped ({task['skip']})")
+            continue
         ready = wd / f".inputs_ready.{task.get('attempt', 0)}"
 
         if rank == 0:
@@ -207,13 +223,14 @@ def run_vasp_calculation(working_directory_list, vasp_yaml_list):
                 time.sleep(1)
 
         command = recipe.get("command", recipe.get("vasp_executable", "vasp_std"))
-        log = open(wd / "vasp.out", "w") if rank == 0 else subprocess.DEVNULL
+        # every rank keeps its own output: when a non-zero rank calls MPI_Abort, its error
+        # banner is the only record of why (rank 0's vasp.out then just stops)
+        log = open(wd / ("vasp.out" if rank == 0 else f"vasp.out.rank{rank}"), "w")
         try:
             rc = subprocess.run(command, shell=True, cwd=wd, close_fds=False,
                                 stdout=log, stderr=subprocess.STDOUT, env=_vasp_env()).returncode
         finally:
-            if rank == 0:
-                log.close()
+            log.close()
         if rank != 0:
             continue
         status = parse_results(wd, incar, recipe.get("stress_tol_kbar", 2.0))

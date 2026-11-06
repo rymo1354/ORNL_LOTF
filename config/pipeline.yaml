@@ -19,6 +19,25 @@ dft:
   initial_magmom: {Cr: 3.0}       # ferromagnetic init; others default to 0.0
   ivdw: 12                        # D3(BJ)
   dipole_correction: auto         # LDIPOL/IDIPOL=3 on asymmetric slabs & heterostructures
+  # Per-structure INCAR keys, kept across attempts. Applied after the U/MAGMOM/dipole blocks and
+  # before the escalation rung. match keys (all optional, ANDed): id/stage (globs), asymmetric, is_slab.
+  # Changing a rule takes effect on the next stage run (any old WAVECAR of that run is deleted).
+  incar_rules:
+    # polar / dipole-corrected slabs slosh charge along z: slab-style Broyden mixing from attempt 1
+    - match: {stage: 03_slab_relax, asymmetric: true}
+      incar: {AMIX: 0.1, BMIX: 0.0001, AMIX_MAG: 0.4, BMIX_MAG: 0.0001, NELM: 300}
+    # heterostructures (metallic CrTe2 on polar oxide slabs, c ~ 45 Å). 2026-11-06: BMIX 1e-4 (the slab rule) gave
+    # severe charge sloshing (rms(c) stuck at about 7-10 after 88 steps). Keep the default Kerker BMIX (1.0) to damp
+    # long-wavelength sloshing, mix more gently, smear more, and run more non-self-consistent start steps for ~1500 bands.
+    - match: {stage: "06*", asymmetric: true}
+      incar: {AMIX: 0.05, AMIX_MAG: 0.2, SIGMA: 0.1, NELMDL: -12, NELM: 300}
+    # Cr-free tetragonal slabs: non-spin-polarised (only relaxed positions are needed here)
+    - match: {stage: 03_slab_relax, id: "slab-BaTiO3-tetragonal-*"}
+      incar: {ISPIN: 1}
+    # tetragonal (001), P out of plane: one run exploded (unconverged SCF -> huge CG steps).
+    # Shorter trial steps and more smearing for the field-induced metallic states.
+    - match: {stage: 03_slab_relax, id: "slab-BaTiO3-tetragonal-001-*"}
+      incar: {POTIM: 0.2, SIGMA: 0.1}
 
 slabs:
   min_slab_size: 12.0             # Å between outermost plane centres; fixed across heterostructures
@@ -27,13 +46,30 @@ slabs:
   symprec: 0.05                   # z -> -z symmetry test that decides the dipole correction
   frozen: bottom_half             # selective dynamics for Stage 3
 
-matching:                         # BUILD_OUT §8.2 starting values
-  target_atoms: [150, 300]
-  max_length_tol: 0.04
+matching:                         # BUILD_OUT §8.2; tightened 2026-11-06 (user decision)
+  max_atoms: 400                  # per heterostructure (user: 350-400 is the practical limit, 4 GPU nodes)
+  max_length_tol: 0.025           # also the cap on the film's max |principal strain|
   max_angle_tol: 0.0175           # rad, ~1 deg
   max_area_ratio_tol: 0.08
-  n_twist_angles: 3
-  film_layers: [1, 2]             # monolayer, bulk-stacked (AA, 1T) bilayer
+  n_twist_angles: 1               # distinct folded twists kept per slab; lowest strain = "primary" (PoC placeholder:
+                                  #   twist choice is an open question for the experimentalists; all candidates -> matches.csv)
+  min_vdw_gap: 2.2                # HeteroBuilder layer detection (Å)
+  substrate_vacuum: 2.4           # slab vacuum during matching, so the whole slab counts as one "vdW layer"
+
+heterostructures:                 # Stage 4. Proof-of-concept selection: terminations, facets and phases to be confirmed
+  film: CrTe2                     #   with the experimentalists (CLAUDE.md "open science questions")
+  film_layers: [1]                # monolayers for now; [1, 2] adds bulk-stacked (AA) bilayers
+  substrates:                     # Stage 3 slab ids; every other slab is kept in the manifest as "skipped"
+    - {id: slab-Al2O3-corundum-001-Al_O3-sym-stoich, trim_to: 7.0}   # single-Al c-plane; trimmed to fit the budget
+    - {id: slab-BaTiO3-cubic-100-TiO2_BaO-sym}
+    - {id: slab-BaTiO3-tetragonal-100-TiO2_BaO-sym}                    # P in-plane
+    # tetragonal (001), P out of plane: dropped from the PoC 2026-11-06 (Stage 3 SCF breakdown from the unscreened
+    #   depolarizing field; not requested). Slabs stay in Stages 2/3 as 'skipped'.
+    - {id: slab-BaTiO3-rhombohedral-100-TiO2_BaO-sym}
+    - {id: slab-BaTiO3-cubic-111-BaO3_Ti-sym}                          # (111): BaO3 termination as placeholder
+    - {id: slab-BaTiO3-tetragonal-111-BaO3_Ti-sym, matching: {max_length_tol: 0.03}}  # explicitly requested system; no match
+                                  #   <=2.5% (distorted cell, gamma 60.5); 3% gives 0 deg, 2.56% max (-0.54/-2.56), 326 at
+    - {id: slab-BaTiO3-rhombohedral-111-BaO3_Ti-sym}
 
 interface:
   start_gap: 3.25                 # Å, nearest substrate plane to Te plane
@@ -50,6 +86,10 @@ defects:                          # discrete counts per supercell; concentration
   - {species: Te, kind: vacancy, counts: [1], region: interface, seed: 0}
   - {species: O,  kind: vacancy, counts: [1], region: interface, seed: 0}
 
+compute_select:                   # which parent records a compute stage runs (default: all 'done' ones)
+  06a_gap_scan:
+    extra: {gap_role: [start]}    # first pass: 3.25 Å start gap only (7 structures); widen to [start, scan, reference]
+
 resources:                        # Perlmutter GPU layout, from EFF VASP_MACE_ASE example
   cores_per_task: 15              # 4 x 15 + broker fits one 64-core node; 16 only if a node is spare
   gpus_per_task: 1
@@ -57,7 +97,11 @@ resources:                        # Perlmutter GPU layout, from EFF VASP_MACE_AS
   atoms_per_node: 100
   max_nodes_per_job: 4
   max_attempts: 3                 # escalation ladder depth for unconverged runs
+  priority:                       # run-directory globs submitted first (in order)
+    - "het-BaTiO3-tetragonal-111-*"   # explicitly requested system
   escalation:                     # INCAR overrides; entry k-1 applies on attempt k (restarts from CONTCAR)
     - {}
-    - {ALGO: All, NELM: 200}
-    - {ALGO: All, NELM: 300, AMIX: 0.1, BMIX: 0.01, AMIX_MAG: 0.4, BMIX_MAG: 0.01}
+    # ALGO=All (CG) aborted silently 3/3 on the VASP 6.4.2 GPU build (2026-11-06): use RMM-DIIS instead,
+    # which also avoids the Davidson ZHEGV failures seen with ALGO=Normal
+    - {ALGO: VeryFast, NELM: 300}
+    - {ALGO: VeryFast, NELM: 300, AMIX: 0.05, BMIX: 0.0001, AMIX_MAG: 0.2, BMIX_MAG: 0.0001}

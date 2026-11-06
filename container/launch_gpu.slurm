@@ -7,7 +7,7 @@
 # Adapted from Ensemble-FF-Fit examples/Perlmutter/VASP_MACE_ASE/launch_multi_node.slurm;
 # see that file for why each podman-hpc flag is needed.
 
-#SBATCH -A m2113_g
+#SBATCH -A m5014_g
 #SBATCH -C gpu
 #SBATCH --qos regular
 #SBATCH -t 4:00:00

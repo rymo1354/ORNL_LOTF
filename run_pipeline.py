@@ -26,6 +26,7 @@ STAGES: dict[str, tuple[str, str]] = {
     "03_slab_relax": ("compute", "config/vasp/slab_relax.yml"),
     "04_heterostructures": ("construct", "notebooks/04_heterostructures.ipynb"),
     "05_variants": ("construct", "notebooks/05_variants.ipynb"),
+    "06a_gap_scan": ("compute", "config/vasp/single_point.yml"),
     "06_single_points": ("compute", "config/vasp/single_point.yml"),
     "07_analysis": ("construct", "notebooks/07_analysis.ipynb"),
 }
